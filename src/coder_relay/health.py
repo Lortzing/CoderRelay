@@ -75,6 +75,11 @@ def _classify_status(code: int) -> str:
     return "http_error"
 
 
+def _invalid_json_message(response: httpx.Response) -> str:
+    content_type = response.headers.get("content-type", "unknown").split(";", 1)[0]
+    return f"Expected JSON response; got {content_type}."
+
+
 def probe_profile(
     profile: Profile,
     auth_path: Path,
@@ -122,24 +127,47 @@ def probe_profile(
                         "stream": False,
                     },
                 )
-                body: Any
                 try:
-                    body = response.json()
+                    body: Any = response.json()
                 except json.JSONDecodeError:
                     body = None
                 text = _extract_output_text(body)
                 expected = profile.health.expected_text
-                healthy = 200 <= response.status_code < 300 and (
-                    expected is None or expected.lower() in text.lower()
-                )
-                status = "healthy" if healthy else _classify_status(response.status_code)
-                message = _redact(text.strip()[:240] or response.text.strip()[:240], api_key)
+                if not 200 <= response.status_code < 300:
+                    healthy = False
+                    status = _classify_status(response.status_code)
+                    message = _redact(response.text.strip()[:240], api_key)
+                elif not isinstance(body, dict):
+                    healthy = False
+                    status = "invalid_response"
+                    message = _invalid_json_message(response)
+                elif not text.strip():
+                    healthy = False
+                    status = "invalid_response"
+                    message = "Responses API returned no output text."
+                elif expected is not None and expected.lower() not in text.lower():
+                    healthy = False
+                    status = "unexpected_response"
+                    message = text.strip()[:240]
+                else:
+                    healthy = True
+                    status = "healthy"
+                    message = text.strip()[:240]
             elif mode == "models":
                 endpoint = profile.health.endpoint or _endpoint(profile.base_url, "models")
                 response = http_client.get(endpoint, headers=headers)
-                healthy = 200 <= response.status_code < 300
-                status = "healthy" if healthy else _classify_status(response.status_code)
-                message = "Model listing succeeded." if healthy else _redact(response.text.strip()[:240], api_key)
+                if not 200 <= response.status_code < 300:
+                    healthy = False
+                    status = _classify_status(response.status_code)
+                    message = _redact(response.text.strip()[:240], api_key)
+                else:
+                    try:
+                        body = response.json()
+                    except json.JSONDecodeError:
+                        body = None
+                    healthy = isinstance(body, (dict, list))
+                    status = "healthy" if healthy else "invalid_response"
+                    message = "Model listing succeeded." if healthy else _invalid_json_message(response)
             elif mode == "custom":
                 if not profile.health.endpoint:
                     raise ValueError("Custom health mode requires an endpoint.")
@@ -161,7 +189,7 @@ def probe_profile(
                     try:
                         balance = _json_path(balance_response.json(), profile.balance.json_path)
                     except json.JSONDecodeError:
-                        balance = balance_response.text.strip()[:240]
+                        balance = None
 
             return ProbeResult(
                 profile=profile.name,
