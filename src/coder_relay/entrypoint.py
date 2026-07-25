@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -10,12 +9,12 @@ from typer._completion_classes import completion_init
 from . import cli as base_cli
 from .completion import ensure_completion
 from .lifecycle import cleanup_relay, uninstall_and_exit, update_and_exit
-from .manager_v2 import EnhancedRelayManager
+from .runtime_manager import RuntimeRelayManager
 
 # The public CLI callback resolves RelayManager from the cli module at runtime.
 # Replace it before any command runs so status, switching, failover, and bootstrap
 # all use account-aware credential-store semantics.
-base_cli.RelayManager = EnhancedRelayManager
+base_cli.RelayManager = RuntimeRelayManager
 
 app = base_cli.app
 console = base_cli.console
@@ -55,7 +54,7 @@ def import_current(
     notes: Annotated[str | None, typer.Option("--notes")] = None,
 ) -> None:
     """Import or synchronize the account used by the active Codex CLI configuration."""
-    manager: EnhancedRelayManager = base_cli._manager(ctx)
+    manager: RuntimeRelayManager = base_cli._manager(ctx)
     try:
         profile = manager.import_current_profile(
             name,
