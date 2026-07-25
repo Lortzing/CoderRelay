@@ -44,6 +44,12 @@ uv run coder-relay --help
 uv build --no-sources
 ```
 
+## Status output policy
+
+- Human-readable `cdy status` output may show short health details, but probe messages longer than 60 characters must be omitted rather than wrapped or truncated across the table.
+- Health status, latency, and HTTP classification remain visible when verbose details are omitted.
+- Never expose access tokens or API keys in status details.
+
 ## Update policy
 
 - `cdy update` targets the latest published stable GitHub Release, never an untagged `main` snapshot.
