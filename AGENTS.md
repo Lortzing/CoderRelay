@@ -19,10 +19,13 @@
 
 - `src/coder_relay/cli.py`: Typer/Rich command definitions.
 - `src/coder_relay/entrypoint.py`: public command surface and lifecycle commands.
+- `src/coder_relay/auth_store.py`: active Codex auth resolution across `auth.json` and the macOS `Codex Auth` Keychain entry.
+- `src/coder_relay/manager.py`: legacy/base profile operations and failover implementation.
+- `src/coder_relay/manager_v2.py`: account-identity deduplication, active-profile synchronization, and credential-store-aware switching.
+- `src/coder_relay/runtime_manager.py`: public runtime manager and non-nested first-run bootstrap.
 - `src/coder_relay/completion.py`: Bash/Zsh/Fish completion for `cdy` and `coder-relay`.
 - `src/coder_relay/lifecycle.py`: update/uninstall dispatch and package-manager lifecycle behavior.
 - `src/coder_relay/updater.py`: latest stable Release discovery, platform/architecture asset selection, downloads, SHA-256 verification, and native update application.
-- `src/coder_relay/manager.py`: profile import, switching, failover, and diagnostics.
 - `src/coder_relay/health.py`: ChatGPT and OpenAI-compatible API probes.
 - `src/coder_relay/usage.py`: auth parsing and ChatGPT usage queries.
 - `src/coder_relay/config.py`: Codex TOML generation.
@@ -44,10 +47,21 @@ uv run coder-relay --help
 uv build --no-sources
 ```
 
+## Account and switching policy
+
+- Profile identity is based on the ChatGPT account ID or a hash of the API credential, never the user-facing profile name.
+- Repeated `import-current` calls for the same identity synchronize the existing profile instead of creating `-2`, `-3`, or other copies.
+- Before switching away, persist refreshed active credentials and config back into the matching managed profile.
+- Generated API profiles must set `cli_auth_credentials_store = "file"` so an unrelated desktop/Keychain session cannot override their API key.
+- On macOS, support the official direct Keychain entry with service `Codex Auth` and the CODEX_HOME-derived `cli|<hash>` account key.
+- A desktop-only session that is not exported to the CLI file or Keychain store must produce a clear error; do not silently import a stale `auth.json` as the desktop account.
+- Do not automatically delete existing duplicate profiles because they may intentionally carry different configs. Prevent new duplicates and let users remove old ones explicitly.
+
 ## Status output policy
 
 - Human-readable `cdy status` output may show short health details, but probe messages longer than 60 characters must be omitted rather than wrapped or truncated across the table.
 - Health status, latency, and HTTP classification remain visible when verbose details are omitted.
+- A Responses API probe is healthy only when it returns a successful JSON response containing output text. HTML challenge pages must be classified as `invalid_response`.
 - Never expose access tokens or API keys in status details.
 
 ## Update policy
