@@ -58,6 +58,7 @@ def _providers_table(doc: Container) -> Table:
 def build_chatgpt_config(base_text: str, model: str | None = None) -> str:
     doc = _document(base_text)
     doc["model_provider"] = "openai"
+    doc["cli_auth_credentials_store"] = "file"
     if model:
         doc["model"] = model
     return tomlkit.dumps(doc)
@@ -81,13 +82,16 @@ def build_api_config(
     doc = _document(base_text)
     doc["model"] = model.strip()
     doc["model_provider"] = provider_id
+    # CoderRelay API profiles store OPENAI_API_KEY in auth.json. Force the
+    # corresponding Codex credential store so a previous desktop/keyring login
+    # cannot silently override the selected API profile.
+    doc["cli_auth_credentials_store"] = "file"
 
     providers = _providers_table(doc)
     provider = tomlkit.table()
     provider.add("name", profile_name)
     provider.add("base_url", normalized_url)
     provider.add("wire_api", "responses")
-    # Codex then reads OPENAI_API_KEY from auth.json for this provider.
     provider.add("requires_openai_auth", True)
     providers[provider_id] = provider
     return tomlkit.dumps(doc), provider_id
