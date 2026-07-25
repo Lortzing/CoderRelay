@@ -3,8 +3,15 @@ from pathlib import Path
 
 import httpx
 
-from coder_relay.health import probe_profile
+from coder_relay.health import _display_message, probe_profile
 from coder_relay.models import HealthConfig, Profile
+
+
+def test_display_message_keeps_short_details_and_hides_long_ones():
+    assert _display_message(" short\nmessage ") == "short message"
+    assert _display_message("x" * 60) == "x" * 60
+    assert _display_message("x" * 61) is None
+    assert _display_message("") is None
 
 
 def test_api_responses_probe(tmp_path: Path):
