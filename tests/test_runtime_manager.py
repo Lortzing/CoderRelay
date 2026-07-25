@@ -64,9 +64,31 @@ def test_keyring_import_uses_account_identity(paths, chatgpt_auth: Path, monkeyp
 
     assert first.name == second.name == "test"
     assert first.auth_source == "keyring"
+    assert manager.last_import_activated is True
     assert len(manager.list_profiles()) == 1
     stored_config = manager._profile_paths("test")[3].read_text(encoding="utf-8")
     assert 'cli_auth_credentials_store = "keyring"' in stored_config
+    assert 'model_provider = "openai"' in stored_config
+
+
+def test_alternate_keyring_import_does_not_replace_active_api_state(
+    paths, chatgpt_auth: Path, monkeypatch
+) -> None:
+    manager = RuntimeRelayManager(paths)
+    manager.add_api_profile(
+        "gateway",
+        base_url="https://gateway.example/v1",
+        api_key="api-secret",
+        model="gpt-test",
+    )
+    manager.switch("gateway")
+    monkeypatch.setattr(auth_store, "_load_macos_keyring", lambda codex_home: chatgpt_auth.read_bytes())
+
+    imported = manager.import_current_profile("desktop-account", auth_source="keyring")
+
+    assert imported.kind == "chatgpt"
+    assert manager.last_import_activated is False
+    assert manager.current_profile() == ("gateway", "managed")
 
 
 def test_generated_api_profile_forces_file_credentials(paths) -> None:
