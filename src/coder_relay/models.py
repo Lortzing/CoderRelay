@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 ProfileKind = Literal["chatgpt", "api"]
 HealthMode = Literal["chatgpt_usage", "responses", "models", "custom"]
+AuthSource = Literal["file", "keyring"]
 
 
 def utc_now_iso() -> str:
@@ -56,16 +57,22 @@ class Profile:
     provider_id: str | None = None
     account_email: str | None = None
     account_plan: str | None = None
+    account_id: str | None = None
+    account_user_id: str | None = None
+    auth_source: AuthSource = "file"
     health: HealthConfig = field(default_factory=lambda: HealthConfig(mode="responses"))
     balance: BalanceConfig | None = None
     notes: str | None = None
-    schema_version: int = 1
+    schema_version: int = 2
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Profile":
+        auth_source = data.get("auth_source", "file")
+        if auth_source not in {"file", "keyring"}:
+            auth_source = "file"
         return cls(
             name=data["name"],
             kind=data["kind"],
@@ -76,6 +83,9 @@ class Profile:
             provider_id=data.get("provider_id"),
             account_email=data.get("account_email"),
             account_plan=data.get("account_plan"),
+            account_id=data.get("account_id"),
+            account_user_id=data.get("account_user_id"),
+            auth_source=auth_source,
             health=HealthConfig.from_dict(data["health"]),
             balance=BalanceConfig.from_dict(data.get("balance")),
             notes=data.get("notes"),
