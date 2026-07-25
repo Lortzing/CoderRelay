@@ -8,14 +8,24 @@ from urllib.parse import urljoin
 
 import httpx
 
+from . import __version__
 from .models import ProbeResult, Profile
 from .usage import fetch_chatgpt_usage, parse_auth_json
 
-USER_AGENT = "coder-relay/0.7.0"
+USER_AGENT = f"coder-relay/{__version__}"
+MAX_DETAIL_LENGTH = 60
 
 
 def _redact(text: str, secret: str) -> str:
     return text.replace(secret, "<redacted>") if secret else text
+
+
+def _display_message(text: str | None) -> str | None:
+    """Return a compact status detail or omit verbose diagnostics entirely."""
+    normalized = " ".join((text or "").split())
+    if not normalized or len(normalized) > MAX_DETAIL_LENGTH:
+        return None
+    return normalized
 
 
 def _endpoint(base_url: str, suffix: str) -> str:
@@ -82,7 +92,7 @@ def probe_profile(
                 status="healthy",
                 latency_ms=(time.perf_counter() - started) * 1000,
                 http_status=http_status,
-                message="ChatGPT authentication and usage endpoint are reachable.",
+                message=_display_message("ChatGPT authentication and usage endpoint are reachable."),
                 usage=usage,
             )
 
@@ -159,7 +169,7 @@ def probe_profile(
                 status=status,
                 latency_ms=(time.perf_counter() - started) * 1000,
                 http_status=response.status_code,
-                message=message or None,
+                message=_display_message(message),
                 balance=balance,
             )
         finally:
@@ -171,7 +181,7 @@ def probe_profile(
             healthy=False,
             status="timeout",
             latency_ms=(time.perf_counter() - started) * 1000,
-            message=str(exc),
+            message=_display_message(str(exc)),
         )
     except httpx.HTTPStatusError as exc:
         return ProbeResult(
@@ -180,7 +190,7 @@ def probe_profile(
             status=_classify_status(exc.response.status_code),
             latency_ms=(time.perf_counter() - started) * 1000,
             http_status=exc.response.status_code,
-            message=str(exc),
+            message=_display_message(str(exc)),
         )
     except (httpx.HTTPError, ValueError, OSError) as exc:
         return ProbeResult(
@@ -188,5 +198,5 @@ def probe_profile(
             healthy=False,
             status="error",
             latency_ms=(time.perf_counter() - started) * 1000,
-            message=str(exc),
+            message=_display_message(str(exc)),
         )
