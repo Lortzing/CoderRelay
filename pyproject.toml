@@ -1,6 +1,6 @@
 [project]
 name = "coder-relay"
-version = "0.8.0"
+version = "0.8.1"
 description = "Manage accounts, profiles, and API routes for coding-agent CLIs, with Codex support, automatic failover, and verified self-updates."
 readme = "README.md"
 requires-python = ">=3.11"
