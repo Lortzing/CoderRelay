@@ -7,32 +7,25 @@
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/github/license/Lortzing/CoderRelay)](LICENSE)
 
-CoderRelay 是面向编码智能体 CLI 的账户、Profile 与 API 路由管理工具。当前完整支持 OpenAI Codex CLI；项目命名与架构已解除对单一厂商的绑定，后续将接入 Claude Code。
+CoderRelay 是面向编码智能体 CLI 的账户、Profile 与 API 路由管理工具。当前完整支持 OpenAI Codex CLI；后续将接入 Claude Code。
 
 当前能力包括：
 
-- 管理多个 ChatGPT/Codex 登录 Profile。
-- 管理 `API Key + Base URL + Model` 类型的 OpenAI 兼容 API。
-- 首次运行时自动导入当前 Codex 配置。
-- 手动切换、健康检查、自动故障转移和高优先级恢复切回。
-- 展示 ChatGPT 套餐、限额窗口、Credits、API 余额和延迟。
-- 通过文件锁、原子写入和备份安全替换活动配置。
-- 从最新稳定 GitHub Release 自动下载、校验并安装平台更新。
-- 支持 Bash、Zsh 和 Fish 自动补全。
+- 管理多个 ChatGPT/Codex 登录 Profile；
+- 管理 `API Key + Base URL + Model` 类型的 OpenAI 兼容 API；
+- 按稳定账号标识去重并同步当前配置；
+- 在切换前保存 Codex 刷新后的 OAuth 凭据；
+- 支持 `auth.json` 与 macOS Keychain 中的 Codex CLI 凭据；
+- 手动切换、健康检查、自动故障转移和恢复切回；
+- 从最新稳定 GitHub Release 自动下载、校验并安装更新；
+- Bash、Zsh 和 Fish 自动补全。
 
 > Claude Code 支持属于后续功能，当前版本不会修改 Claude Code 的配置。
 
 ## 命令
 
-推荐使用短命令：
-
 ```bash
 cdy --help
-```
-
-完整命令也可用：
-
-```bash
 coder-relay --help
 ```
 
@@ -46,8 +39,6 @@ coder-relay --help
 | x86_64 / x64 | `CoderRelay-Setup-<版本>-windows-x86_64.exe` | `CoderRelay-Portable-<版本>-windows-x86_64.zip` |
 | ARM64 | `CoderRelay-Setup-<版本>-windows-arm64.exe` | `CoderRelay-Portable-<版本>-windows-arm64.zip` |
 
-安装程序会把 `cdy.exe` 安装到当前用户目录、加入用户 `PATH` 并注册标准卸载程序。
-
 ### macOS
 
 | 架构 | 安装镜像 |
@@ -55,26 +46,7 @@ coder-relay --help
 | Intel x86_64 | `CoderRelay-<版本>-macOS-x86_64.dmg` |
 | Apple Silicon ARM64 | `CoderRelay-<版本>-macOS-arm64.dmg` |
 
-打开 DMG 后运行其中的 `CoderRelay-<版本>.pkg`。新版 PKG 使用持久化目录式运行时，避免旧版单文件程序每次启动时重新解压。
-
-运行时安装到：
-
-```text
-/usr/local/lib/coder-relay/
-```
-
-命令入口保持为：
-
-```text
-/usr/local/bin/cdy
-```
-
-从旧版 macOS DMG 升级时，需要重新安装最新 PKG；仅重新打开旧的 `cdy` 不会获得启动提速。安装后可以验证：
-
-```bash
-time cdy --help
-cdy status --no-probe
-```
+打开 DMG 后运行其中的 PKG。运行时安装到 `/usr/local/lib/coder-relay/`，命令入口为 `/usr/local/bin/cdy`。
 
 ### Linux
 
@@ -83,15 +55,7 @@ cdy status --no-probe
 | x86_64 | `coder-relay-<版本>-linux-x86_64.tar.gz` | `coder-relay_<版本>_amd64.deb` | `coder-relay-<版本>-1.x86_64.rpm` |
 | ARM64/AArch64 | `coder-relay-<版本>-linux-aarch64.tar.gz` | `coder-relay_<版本>_arm64.deb` | `coder-relay-<版本>-1.aarch64.rpm` |
 
-```bash
-sudo apt install ./coder-relay_<版本>_amd64.deb
-# 或
-sudo rpm -Uvh ./coder-relay-<版本>-1.x86_64.rpm
-```
-
 ### 从源码安装
-
-要求 Python 3.11+ 与 `uv`：
 
 ```bash
 git clone https://github.com/Lortzing/CoderRelay.git
@@ -99,27 +63,24 @@ cd CoderRelay
 ./install.sh
 ```
 
-也可以直接安装固定 Tag：
+固定安装 v0.8.1：
 
 ```bash
-uv tool install --force git+https://github.com/Lortzing/CoderRelay.git@v0.8.0
+uv tool install --force git+https://github.com/Lortzing/CoderRelay.git@v0.8.1
 ```
 
 ## 快速开始
 
-首次运行会在没有 Profile 时自动导入当前 `$CODEX_HOME/auth.json` 和 `config.toml`：
-
 ```bash
 cdy status
-```
-
-只查看本地状态、不执行网络探测：
-
-```bash
 cdy status --no-probe
+cdy import-current
+cdy use official
+cdy auto official backup --watch
+cdy launch -p official -p backup --
 ```
 
-添加登录 Profile：
+添加 ChatGPT 登录文件：
 
 ```bash
 cdy add-auth official ~/.codex/auth.json
@@ -134,25 +95,97 @@ cdy add-api backup \
   --api-key-stdin
 ```
 
-常用命令：
+## 当前账号与导入
+
+从 v0.8.1 开始，`import-current` 不再按名称盲目创建新目录，而是读取稳定账号标识：
+
+- ChatGPT：优先使用 `chatgpt_account_id`；
+- API：使用 API 凭据哈希。
+
+重复执行：
 
 ```bash
-cdy status
 cdy import-current
-cdy use official
-cdy auto official backup --watch
-cdy launch -p official -p backup --
-cdy doctor
-cdy update
-cdy uninstall
 ```
+
+会更新已有匹配 Profile，而不会继续创建 `name-2`、`name-3`。
+
+Codex CLI 可能把凭据保存在：
+
+- `$CODEX_HOME/auth.json`；
+- macOS Keychain 的 Codex CLI 凭据项。
+
+通常使用自动识别：
+
+```bash
+cdy import-current
+```
+
+macOS 可显式指定：
+
+```bash
+cdy import-current --auth-source file
+cdy import-current --auth-source keyring
+```
+
+当当前 CLI 配置仍是 API Profile，而你从 Keychain 导入另一个 ChatGPT 账号时，该 Profile 只会被保存，不会错误地标记为当前活动账号。随后显式执行：
+
+```bash
+cdy use <Profile名>
+```
+
+仅存在于桌面应用内部、没有导出到 CLI 文件或 Keychain 的会话无法安全复制。此时先在终端使用同一账号运行：
+
+```bash
+codex login
+```
+
+再执行 `cdy import-current`。
+
+详细说明见 [docs/auth-and-switching.md](docs/auth-and-switching.md)。
+
+## 切换行为
+
+执行：
+
+```bash
+cdy use <Profile名>
+```
+
+CoderRelay 会：
+
+1. 识别当前实际账号；
+2. 将 Codex 刷新后的 Token 和当前配置回写到对应 Profile；
+3. 备份活动配置；
+4. 写入目标 Profile 的凭据和配置；
+5. 校验后更新活动状态。
+
+API Profile 会显式设置：
+
+```toml
+cli_auth_credentials_store = "file"
+```
+
+避免无关的桌面端或 Keychain ChatGPT 登录覆盖 API Key。
+
+切换后需要重新启动已存在的 Codex CLI/App 进程，使其重新载入配置。
+
+## 健康检查
+
+Responses API 只有在返回成功 JSON 且包含输出文本时才算健康。HTTP 200 的 HTML 防护页会显示为：
+
+```text
+invalid_response
+```
+
+过长错误详情不会在状态表中展开。完整自动化场景可使用 `--json` 输出。
 
 ## 自动切换规则
 
-1. 参数越靠前，Profile 优先级越高。
-2. 当前 Profile 连续失败达到阈值后切换。
-3. 高优先级 Profile 连续恢复达到阈值后切回。
-4. 恢复切换受冷却时间限制，紧急故障转移不受限制。
+1. 参数越靠前，Profile 优先级越高；
+2. 当前 Profile 连续失败达到阈值后切换；
+3. 高优先级 Profile 连续恢复达到阈值后切回；
+4. 恢复切换受冷却时间限制，紧急故障转移不受限制；
 5. 所有候选均不健康时，保持当前活动配置不变。
 
 ## 数据目录
@@ -165,69 +198,41 @@ cdy uninstall
 └── switch.lock
 ```
 
-可以通过 `CODER_RELAY_HOME` 覆盖。Codex 活动配置仍位于：
+可以通过 `CODER_RELAY_HOME` 覆盖。默认 Codex 目录为 `~/.codex`，也可以通过 `CODEX_HOME` 覆盖。
 
-```text
-~/.codex/auth.json
-~/.codex/config.toml
+现有重复 Profile 不会自动删除，因为同一账号可能有意保存不同模型或配置。确认无用后执行：
+
+```bash
+cdy remove <Profile名>
 ```
-
-更新和卸载 CoderRelay 都不会删除这两个活动文件。
 
 ## 自动更新与卸载
 
-从 v0.8.0 开始，所有安装方式均可使用：
-
 ```bash
 cdy update
-cdy update -y       # 跳过确认
-cdy update --force  # 即使版本相同也重新安装最新稳定版
-```
+cdy update -y
+cdy update --force
 
-更新流程：
-
-1. 查询最新的稳定 GitHub Release，而不是直接追踪 `main`。
-2. 根据操作系统、CPU 架构和当前安装方式选择精确资产。
-3. 下载目标资产和 `SHA256SUMS.txt`。
-4. 校验文件大小、SHA-256 清单，以及 GitHub 提供的资产摘要（如果存在）。
-5. 使用对应平台的安装方式完成替换。
-
-平台行为：
-
-- Windows Setup：当前进程退出后静默运行新 Setup 安装程序。
-- Windows 便携版：当前进程退出后原地替换 `cdy.exe`。
-- macOS PKG：自动挂载 DMG，并通过系统 `installer` 安装；可能要求输入管理员密码。
-- Linux DEB/RPM：调用系统包管理器升级。
-- Linux TAR.GZ：校验后原地替换当前可执行文件。
-- `uv`、`pipx`、`pip`：安装最新稳定 Release 对应的固定 Tag，不再直接安装 `main`。
-
-`v0.7.0` 及更早版本本身没有自动下载能力，因此需要手动安装 `v0.8.0` 一次。此后的稳定版本可以直接通过 `cdy update` 升级。
-
-卸载：
-
-```bash
 cdy uninstall
 cdy uninstall --purge
 ```
 
-Windows Setup 安装版会启动标准卸载器。macOS PKG 安装在 `/usr/local`，卸载时使用：
+自动更新会选择对应平台资产，下载 `SHA256SUMS.txt`，完成 SHA-256 校验后再安装。
+
+macOS PKG 卸载：
 
 ```bash
 sudo cdy uninstall --yes
 ```
 
-Linux DEB/RPM 也可以继续使用系统包管理器卸载。
-
 ## 发布
 
-推送与 `pyproject.toml` 版本一致的 Tag：
-
 ```bash
-git tag -a v0.8.0 -m "CoderRelay v0.8.0"
-git push origin v0.8.0
+git tag -a v0.8.1 -m "CoderRelay v0.8.1"
+git push origin v0.8.1
 ```
 
-Release Workflow 会构建 Windows Setup EXE/ZIP、macOS DMG/PKG、Linux TAR/DEB/RPM，并生成 `SHA256SUMS.txt`。macOS 使用 PyInstaller 目录式运行时以降低重复启动延迟。安装包未进行数字签名，Windows SmartScreen 或 macOS Gatekeeper 可能显示安全提示。
+Release Workflow 会构建 Windows Setup/ZIP、macOS DMG/PKG、Linux TAR/DEB/RPM，并生成 `SHA256SUMS.txt`。安装包尚未数字签名。
 
 ## 开发
 
