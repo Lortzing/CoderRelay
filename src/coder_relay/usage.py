@@ -8,10 +8,11 @@ from typing import Any
 
 import httpx
 
+from . import __version__
 from .errors import InvalidProfileError
 
 CHATGPT_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
-USER_AGENT = "coder-relay/0.7.0"
+USER_AGENT = f"coder-relay/{__version__}"
 
 
 def _decode_jwt_payload(token: str) -> dict[str, Any]:
@@ -25,15 +26,9 @@ def _decode_jwt_payload(token: str) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def parse_auth_json(path: Path) -> dict[str, Any]:
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise InvalidProfileError(f"Missing auth file: {path}") from exc
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise InvalidProfileError(f"Invalid auth JSON: {path}: {exc}") from exc
+def parse_auth_payload(raw: Any, *, source: str = "auth.json") -> dict[str, Any]:
     if not isinstance(raw, dict):
-        raise InvalidProfileError("auth.json must contain a JSON object.")
+        raise InvalidProfileError(f"{source} must contain a JSON object.")
 
     api_key = raw.get("OPENAI_API_KEY")
     if isinstance(api_key, str) and api_key.strip():
@@ -46,13 +41,13 @@ def parse_auth_json(path: Path) -> dict[str, Any]:
     tokens = raw.get("tokens")
     if not isinstance(tokens, dict):
         raise InvalidProfileError(
-            "ChatGPT auth.json must contain a tokens object; API auth.json must contain OPENAI_API_KEY."
+            f"{source}: ChatGPT auth must contain tokens; API auth must contain OPENAI_API_KEY."
         )
     access_token = tokens.get("access_token")
     account_id = tokens.get("account_id")
     id_token = tokens.get("id_token")
     if not isinstance(access_token, str) or not access_token:
-        raise InvalidProfileError("ChatGPT auth.json is missing tokens.access_token.")
+        raise InvalidProfileError(f"{source} is missing tokens.access_token.")
     claims = _decode_jwt_payload(id_token) if isinstance(id_token, str) else {}
     openai_claims = claims.get("https://api.openai.com/auth")
     if not isinstance(openai_claims, dict):
@@ -60,7 +55,7 @@ def parse_auth_json(path: Path) -> dict[str, Any]:
     if not isinstance(account_id, str) or not account_id:
         account_id = openai_claims.get("chatgpt_account_id")
     if not isinstance(account_id, str) or not account_id:
-        raise InvalidProfileError("ChatGPT auth.json is missing an account id.")
+        raise InvalidProfileError(f"{source} is missing a ChatGPT account id.")
 
     return {
         "kind": "chatgpt",
@@ -72,6 +67,22 @@ def parse_auth_json(path: Path) -> dict[str, Any]:
         "user_id": openai_claims.get("chatgpt_user_id") or openai_claims.get("user_id"),
         "last_refresh": raw.get("last_refresh"),
     }
+
+
+def parse_auth_bytes(content: bytes, *, source: str = "auth data") -> dict[str, Any]:
+    try:
+        raw = json.loads(content.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise InvalidProfileError(f"Invalid auth JSON from {source}: {exc}") from exc
+    return parse_auth_payload(raw, source=source)
+
+
+def parse_auth_json(path: Path) -> dict[str, Any]:
+    try:
+        content = path.read_bytes()
+    except FileNotFoundError as exc:
+        raise InvalidProfileError(f"Missing auth file: {path}") from exc
+    return parse_auth_bytes(content, source=str(path))
 
 
 def _reset_iso(timestamp: Any) -> str | None:
