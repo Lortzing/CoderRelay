@@ -18,7 +18,7 @@
 ## Architecture
 
 - `src/coder_relay/cli.py`: Typer/Rich command definitions.
-- `src/coder_relay/entrypoint.py`: public command surface and lifecycle commands.
+- `src/coder_relay/entrypoint.py`: public command surface, global `--version`, concise status rendering, and lifecycle commands.
 - `src/coder_relay/auth_store.py`: active Codex auth resolution across `auth.json` and the macOS `Codex Auth` Keychain entry.
 - `src/coder_relay/manager.py`: legacy/base profile operations and failover implementation.
 - `src/coder_relay/manager_v2.py`: account-identity deduplication, active-profile synchronization, and credential-store-aware switching.
@@ -43,6 +43,7 @@
 uv sync --extra dev
 uv run pytest
 uv run cdy --help
+uv run cdy --version
 uv run coder-relay --help
 uv build --no-sources
 ```
@@ -59,7 +60,10 @@ uv build --no-sources
 
 ## Status output policy
 
-- Human-readable `cdy status` output may show short health details, but probe messages longer than 60 characters must be omitted rather than wrapped or truncated across the table.
+- Human-readable `cdy status` must omit the `Detail` column by default.
+- `cdy status --detail` is the explicit opt-in for compact probe details.
+- `cdy status --json` retains complete structured probe messages for diagnostics and scripts.
+- Probe messages longer than 60 characters must be omitted rather than wrapped or truncated across the table.
 - Health status, latency, and HTTP classification remain visible when verbose details are omitted.
 - A Responses API probe is healthy only when it returns a successful JSON response containing output text. HTML challenge pages must be classified as `invalid_response`.
 - Never expose access tokens or API keys in status details.
