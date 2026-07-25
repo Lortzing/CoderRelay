@@ -5,6 +5,7 @@ from pathlib import Path
 import typer
 from typer.testing import CliRunner
 
+from coder_relay import __version__
 from coder_relay import entrypoint as cli
 from coder_relay.entrypoint import app
 from coder_relay.lifecycle import CleanupResult
@@ -41,6 +42,42 @@ def test_status_first_run_imports_current_profile(tmp_path: Path, chatgpt_auth: 
     assert first_payload["active_profile"] == "test"
     assert [item["name"] for item in first_payload["profiles"]] == ["test"]
     assert [item["name"] for item in second_payload["profiles"]] == ["test"]
+
+
+def test_version_option() -> None:
+    result = runner.invoke(app, ["--version"])
+
+    assert result.exit_code == 0, result.stdout
+    assert result.stdout.strip() == f"CoderRelay {__version__}"
+
+
+def test_status_hides_detail_by_default(tmp_path: Path, chatgpt_auth: Path) -> None:
+    app_home = tmp_path / "app"
+    codex_home = tmp_path / "codex"
+    codex_home.mkdir()
+    (codex_home / "auth.json").write_bytes(chatgpt_auth.read_bytes())
+    (codex_home / "config.toml").write_text(
+        'model = "gpt-5.6"\nmodel_provider = "openai"\n',
+        encoding="utf-8",
+    )
+    prefix = [
+        "--home",
+        str(app_home),
+        "--codex-home",
+        str(codex_home),
+        "status",
+        "--no-probe",
+    ]
+
+    default = runner.invoke(app, prefix, terminal_width=160)
+    detailed = runner.invoke(app, [*prefix, "--detail"], terminal_width=160)
+
+    assert default.exit_code == 0, default.stdout
+    assert detailed.exit_code == 0, detailed.stdout
+    assert "Detail" not in default.stdout
+    assert "network probe disabled" not in default.stdout
+    assert "Detail" in detailed.stdout
+    assert "network probe disabled" in detailed.stdout
 
 
 def test_only_current_entry_points_are_published() -> None:
