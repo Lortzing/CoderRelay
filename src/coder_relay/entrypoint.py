@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -9,17 +10,70 @@ from typer._completion_classes import completion_init
 from . import cli as base_cli
 from .completion import ensure_completion
 from .lifecycle import cleanup_relay, uninstall_and_exit, update_and_exit
+from .manager_v2 import EnhancedRelayManager
+
+# The public CLI callback resolves RelayManager from the cli module at runtime.
+# Replace it before any command runs so status, switching, failover, and bootstrap
+# all use account-aware credential-store semantics.
+base_cli.RelayManager = EnhancedRelayManager
 
 app = base_cli.app
 console = base_cli.console
 
-# Remove commands that existed solely for historical compatibility or whose
-# lifecycle behavior is replaced by this module.
+# Remove commands whose public behavior is replaced by this module.
 app.registered_commands[:] = [
     command
     for command in app.registered_commands
-    if command.name not in {"list", "uninstall"}
+    if command.name not in {"list", "import-current", "uninstall"}
 ]
+
+
+@app.command("import-current")
+def import_current(
+    ctx: typer.Context,
+    name: Annotated[
+        str | None,
+        typer.Argument(help="Profile name. Omit it to synchronize an existing matching account."),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Replace a differently identified named profile."),
+    ] = False,
+    auth_source: Annotated[
+        str,
+        typer.Option(
+            "--auth-source",
+            help="Credential source: auto, file, or keyring. Keyring import is supported on macOS.",
+        ),
+    ] = "auto",
+    health_mode: Annotated[
+        str | None,
+        typer.Option("--health-mode", help="API probe mode override: responses or models."),
+    ] = None,
+    balance_url: Annotated[str | None, typer.Option("--balance-url")] = None,
+    balance_path: Annotated[str | None, typer.Option("--balance-path")] = None,
+    notes: Annotated[str | None, typer.Option("--notes")] = None,
+) -> None:
+    """Import or synchronize the account used by the active Codex CLI configuration."""
+    manager: EnhancedRelayManager = base_cli._manager(ctx)
+    try:
+        profile = manager.import_current_profile(
+            name,
+            force=force,
+            auth_source=auth_source,
+            health_mode=health_mode,
+            balance_url=balance_url,
+            balance_path=balance_path,
+            notes=notes,
+        )
+    except Exception as exc:
+        base_cli._fail(exc)
+    detail = profile.account_email or profile.base_url or profile.provider_id or profile.kind
+    console.print(
+        f"Imported or synchronized [bold green]{profile.name}[/bold green] "
+        f"([cyan]{profile.kind}[/cyan], {detail}, auth={profile.auth_source})."
+    )
+    console.print("Repeated imports of the same account update this profile instead of creating a copy.")
 
 
 @app.command("update")
@@ -84,7 +138,7 @@ def uninstall(
         console.print("Managed profiles, backups, and state were deleted.")
     else:
         console.print(f"Managed profile data was preserved at {manager.paths.app_home}.")
-    console.print("The active ~/.codex/auth.json and config.toml were not removed.")
+    console.print("Active Codex configuration and credential stores were not removed.")
     console.print("Removing the installed package...")
     console.file.flush()
     uninstall_and_exit()
