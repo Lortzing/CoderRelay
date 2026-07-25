@@ -73,6 +73,11 @@ def import_current(
         f"([cyan]{profile.kind}[/cyan], {detail}, auth={profile.auth_source})."
     )
     console.print("Repeated imports of the same account update this profile instead of creating a copy.")
+    if not manager.last_import_activated:
+        console.print(
+            "The selected credential source is not active in the current CLI config. "
+            f"Run [bold]cdy use {profile.name}[/bold] to activate it."
+        )
 
 
 @app.command("update")
