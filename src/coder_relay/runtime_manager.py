@@ -12,6 +12,8 @@ from .storage import atomic_write, write_json
 class RuntimeRelayManager(EnhancedRelayManager):
     """Public runtime manager with an idempotent, non-nested bootstrap path."""
 
+    last_import_activated: bool = True
+
     def bootstrap_current_profile(self) -> Profile | None:
         if self.list_profiles() or not self.paths.active_config.is_file():
             return None
@@ -24,6 +26,26 @@ class RuntimeRelayManager(EnhancedRelayManager):
         if self.list_profiles():
             return None
         return self.import_current_profile()
+
+    def import_current_profile(self, *args, auth_source: str = "auto", **kwargs) -> Profile:
+        previous_state = self._state()
+        profile = super().import_current_profile(
+            *args,
+            auth_source=auth_source,
+            **kwargs,
+        )
+        self.last_import_activated = True
+        if auth_source != "auto":
+            try:
+                actual = load_active_auth(self.paths)
+            except InvalidProfileError:
+                actual = None
+            if actual is None or actual.source != profile.auth_source:
+                # An explicitly selected alternate source was imported, but it is
+                # not what the active config currently tells Codex CLI to use.
+                self._save_state(previous_state)
+                self.last_import_activated = False
+        return profile
 
     def _write_profile_snapshot(
         self,
