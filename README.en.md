@@ -7,74 +7,22 @@
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/github/license/Lortzing/CoderRelay)](LICENSE)
 
-CoderRelay manages accounts, profiles, and API routes for coding-agent CLIs. The current release fully supports OpenAI Codex CLI. The product identity and architecture are vendor-neutral so Claude Code can be added next.
+CoderRelay manages accounts, profiles, and API routes for coding-agent CLIs. The current release supports OpenAI Codex CLI; Claude Code support is planned.
 
-Current capabilities:
+Key capabilities:
 
-- Multiple ChatGPT/Codex login profiles.
-- OpenAI-compatible API profiles using an API key, base URL, and model.
-- Automatic import of the active Codex configuration on first use.
-- Manual switching, health checks, failover, and preferred-profile recovery.
-- ChatGPT plan, rate-limit windows, credits, provider balance, and latency display.
-- Safe activation using backups, process locks, and atomic writes.
-- Verified automatic updates from the latest stable GitHub Release.
-- Bash, Zsh, and Fish completion.
-
-> Claude Code support is planned. This release does not modify Claude Code configuration.
-
-## Commands
-
-```bash
-cdy --help          # recommended
-coder-relay --help  # full command
-```
+- multiple ChatGPT/Codex and API-key profiles;
+- identity-based, idempotent `import-current` synchronization;
+- preservation of OAuth credentials refreshed by Codex before switching;
+- Codex `auth.json` and macOS Keychain credential sources;
+- health checks, automatic failover, and preferred-profile recovery;
+- verified automatic updates from stable GitHub Releases.
 
 ## Installation
 
-### Windows
+Download the matching Windows Setup/ZIP, macOS DMG, or Linux TAR/DEB/RPM asset from the release. The macOS package installs its persistent runtime under `/usr/local/lib/coder-relay/` and exposes `/usr/local/bin/cdy`.
 
-| Architecture | Installer | Portable |
-|---|---|---|
-| x86 32-bit | `CoderRelay-Setup-<version>-windows-x86.exe` | `CoderRelay-Portable-<version>-windows-x86.zip` |
-| x86_64 / x64 | `CoderRelay-Setup-<version>-windows-x86_64.exe` | `CoderRelay-Portable-<version>-windows-x86_64.zip` |
-| ARM64 | `CoderRelay-Setup-<version>-windows-arm64.exe` | `CoderRelay-Portable-<version>-windows-arm64.zip` |
-
-### macOS
-
-| Architecture | Disk image |
-|---|---|
-| Intel x86_64 | `CoderRelay-<version>-macOS-x86_64.dmg` |
-| Apple Silicon ARM64 | `CoderRelay-<version>-macOS-arm64.dmg` |
-
-Open the DMG and run the included PKG. The current package uses a persistent PyInstaller directory runtime instead of extracting a one-file executable on every command.
-
-The runtime is installed under:
-
-```text
-/usr/local/lib/coder-relay/
-```
-
-The command remains available at:
-
-```text
-/usr/local/bin/cdy
-```
-
-Install the new PKG again when upgrading from the earlier macOS one-file build. The existing executable does not become faster until it is replaced.
-
-```bash
-time cdy --help
-cdy status --no-probe
-```
-
-### Linux
-
-| Architecture | Portable | Debian/Ubuntu | Fedora/RHEL |
-|---|---|---|---|
-| x86_64 | `coder-relay-<version>-linux-x86_64.tar.gz` | `coder-relay_<version>_amd64.deb` | `coder-relay-<version>-1.x86_64.rpm` |
-| ARM64/AArch64 | `coder-relay-<version>-linux-aarch64.tar.gz` | `coder-relay_<version>_arm64.deb` | `coder-relay-<version>-1.aarch64.rpm` |
-
-### Source installation
+Source installation:
 
 ```bash
 git clone https://github.com/Lortzing/CoderRelay.git
@@ -82,10 +30,10 @@ cd CoderRelay
 ./install.sh
 ```
 
-Or install a fixed tag:
+Fixed tag:
 
 ```bash
-uv tool install --force git+https://github.com/Lortzing/CoderRelay.git@v0.8.0
+uv tool install --force git+https://github.com/Lortzing/CoderRelay.git@v0.8.1
 ```
 
 ## Quick start
@@ -93,12 +41,63 @@ uv tool install --force git+https://github.com/Lortzing/CoderRelay.git@v0.8.0
 ```bash
 cdy status
 cdy status --no-probe
-cdy add-auth official ~/.codex/auth.json
-cdy add-api backup --url https://gateway.example.com/v1 --model gpt-5.6 --api-key-stdin
+cdy import-current
 cdy use official
 cdy auto official backup --watch
 cdy launch -p official -p backup --
 ```
+
+Create an API profile:
+
+```bash
+cdy add-api backup \
+  --url https://gateway.example.com/v1 \
+  --model gpt-5.6 \
+  --api-key-stdin
+```
+
+## Account import
+
+Starting with v0.8.1, repeated imports use the stable ChatGPT account ID or an API credential hash. The same account is synchronized in place instead of producing `name-2`, `name-3`, and similar copies.
+
+```bash
+cdy import-current
+```
+
+Codex CLI credentials can be stored in `$CODEX_HOME/auth.json` or, on macOS, in the Codex Keychain entry. A source can be selected explicitly:
+
+```bash
+cdy import-current --auth-source file
+cdy import-current --auth-source keyring
+```
+
+Importing an alternate Keychain account while the active CLI config still uses an API profile saves the profile without falsely marking it active. Activate it explicitly:
+
+```bash
+cdy use <profile>
+```
+
+A session that exists only inside a desktop application and is not exported to the CLI file or Keychain store cannot be copied safely. Sign in to the same account with `codex login` in Terminal first.
+
+See [docs/auth-and-switching.md](docs/auth-and-switching.md).
+
+## Switching
+
+Before switching away, CoderRelay saves refreshed active credentials and config into the matching profile, then backs up and activates the target profile.
+
+Generated API profiles set:
+
+```toml
+cli_auth_credentials_store = "file"
+```
+
+This prevents an unrelated desktop or Keychain ChatGPT login from overriding the selected API key.
+
+Restart existing Codex CLI or desktop processes after switching so they reload credentials and config.
+
+## Health checks
+
+A Responses API probe is healthy only when it returns successful JSON containing output text. HTTP 200 HTML challenge pages are reported as `invalid_response`. Verbose error bodies are omitted from the human-readable status table.
 
 ## Storage
 
@@ -110,58 +109,32 @@ cdy launch -p official -p backup --
 └── switch.lock
 ```
 
-Override it with `CODER_RELAY_HOME`. Active Codex files remain under `~/.codex`; updates and uninstall never delete them.
+Existing duplicates are not deleted automatically because the same account may intentionally have different configs. Remove only confirmed unwanted profiles:
 
-## Automatic updates and uninstall
+```bash
+cdy remove <profile>
+```
 
-Starting with v0.8.0, every installation type supports:
+## Updates and uninstall
 
 ```bash
 cdy update
 cdy update -y
 cdy update --force
-```
-
-The updater:
-
-1. Queries the latest stable GitHub Release instead of tracking `main`.
-2. Selects the exact asset for the operating system, CPU architecture, and installation type.
-3. Downloads the asset and `SHA256SUMS.txt`.
-4. Verifies size, the SHA-256 manifest, and the GitHub asset digest when available.
-5. Installs or replaces the application using the native platform mechanism.
-
-Platform behavior:
-
-- Windows Setup runs the verified installer after the current process exits.
-- Windows Portable replaces `cdy.exe` after the current process exits.
-- macOS mounts the DMG and runs the system PKG installer; an administrator password may be requested.
-- Linux DEB/RPM uses the system package manager.
-- Linux TAR.GZ replaces the current executable in place.
-- `uv`, `pipx`, and `pip` install the fixed tag for the latest stable release rather than `main`.
-
-v0.7.0 and earlier do not contain the downloader, so they require one manual installation of v0.8.0. Later stable releases can then be installed with `cdy update`.
-
-```bash
 cdy uninstall
 cdy uninstall --purge
 ```
 
-The macOS PKG installs under `/usr/local`, so remove it with administrator privileges:
-
-```bash
-sudo cdy uninstall --yes
-```
+The updater downloads the matching release asset and `SHA256SUMS.txt`, verifies SHA-256, and then invokes the native platform installer or replacement mechanism.
 
 ## Release
 
-Create a tag matching `pyproject.toml`:
-
 ```bash
-git tag -a v0.8.0 -m "CoderRelay v0.8.0"
-git push origin v0.8.0
+git tag -a v0.8.1 -m "CoderRelay v0.8.1"
+git push origin v0.8.1
 ```
 
-The Release workflow builds native Windows installers, macOS DMG/PKG installers, Linux TAR/DEB/RPM packages, and `SHA256SUMS.txt`. macOS uses a PyInstaller directory runtime to reduce repeated startup latency. These artifacts are unsigned and may trigger Windows SmartScreen or macOS Gatekeeper warnings.
+Release artifacts are unsigned.
 
 ## Development
 
